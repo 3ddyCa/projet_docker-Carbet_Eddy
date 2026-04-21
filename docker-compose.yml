@@ -1,0 +1,78 @@
+services:
+
+
+    app:
+        container_name: serv-apache
+        image: php:8.2-apache
+        ports:
+            - ${APP_PORT}:80
+        volumes:
+            - ./app:/var/www/html
+        environment:
+            DB_HOST: bd
+            DB_NAME: ${MYSQL_DATABASE}
+            DB_USER: ${MYSQL_USER}
+            DB_PASSWORD: ${MYSQL_PASSWORD}
+            SMTP_HOST: mail
+            SMTP_PORT: 1025
+        depends_on:
+            bd :
+                condition: service_healthy
+        command: sh -c "apt-get update && apt-get install -y msmtp && echo 'host mail' > /etc/msmtprc && echo 'port 1025' >> /etc/msmtprc && echo 'from webmaster@miniblog.local' >> /etc/msmtprc && echo 'sendmail_path=/usr/bin/msmtp -t' > /usr/local/etc/php/conf.d/mail.ini && docker-php-ext-install pdo_mysql && apache2-foreground"
+        restart: unless-stopped
+        networks:
+            - miniblog_net
+
+
+    phpMyAdmin:
+        container_name: serv-phpAdmin
+        image: phpmyadmin:latest
+        ports:
+            - 8081:81
+        environment:
+            PMA_HOST: bd
+            PMA_USER: ${MYSQL_USER}
+            PMA_PASSWORD: ${MYSQL_PASSWORD}
+        depends_on:
+            - bd
+        networks:
+            - miniblog_net
+
+    bd:
+        container_name: bd-mysql
+        image: mysql:8.0
+        ports:
+            - ${DB_PORT}:3306
+        environment:
+            MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+            MYSQL_DATABASE: ${MYSQL_DATABASE}
+            MYSQL_USER: ${MYSQL_USER}
+            MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+        
+        healthcheck:
+            test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-p${MYSQL_ROOT_PASSWORD}"]
+            interval: 5s
+            timeout: 3s
+            retries: 10
+
+        volumes:
+            - db_data:/var/lib/mysql
+            - ./sql:/docker-entrypoint-initdb.d:ro
+        restart: unless-stopped
+        networks:
+            - miniblog_net
+    mail:
+        container_name: serv-mailhog
+        image: mailhog/mailhog:latest
+        ports:
+            - 1025:1025
+            - 8025:8025
+        networks:
+            - miniblog_net
+            
+networks:
+    miniblog_net:
+        driver: bridge
+
+volumes:
+    db_data:
